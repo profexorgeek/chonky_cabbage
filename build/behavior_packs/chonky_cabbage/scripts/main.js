@@ -1,36 +1,87 @@
-import { world, system, BlockPermutation } from "@minecraft/server";
+import { world, system } from "@minecraft/server";
 import RoadMaker from "./RoadMaker";
 import Debug from "./Debug";
 const TicksPerSecond = 20;
 const HeadHeightInBlocks = 2;
-const MaxRoadDimension = 500;
+const SecondsBeforeInit = 20;
+const SecondsBetweenRoadmakerTicks = 0.2;
+let roadmaker;
+let initialized = false;
+// road maker initialization
+function initialize() {
+    Debug.trace("Initializing RoadMaker...");
+    try {
+        roadmaker = new RoadMaker();
+    }
+    catch (e) {
+        Debug.error(`Failed to start RoadMaker: ${e}`);
+    }
+    Debug.info("RoadMaker initialized:");
+    help();
+    initialized = true;
+}
+// main game loop
 function mainTick() {
-    const secondsBetweenChecks = 3;
-    const cobblestone = BlockPermutation.resolve("minecraft:yellow_glazed_terracotta");
-    if (system.currentTick % (TicksPerSecond * secondsBetweenChecks) === 0) {
-        Debug.trace("Scripting is running correctly: " + system.currentTick);
-        Debug.debug(`Cardinal direction is ${RoadMaker.getCardinalInteger(world.getAllPlayers()[0].getViewDirection())}`);
+    if (initialized === false && system.currentTick > (TicksPerSecond * SecondsBeforeInit)) {
+        Debug.trace("Starting Add-On capabilities...");
+        initialize();
+    }
+    if (initialized === true && system.currentTick % (SecondsBetweenRoadmakerTicks * TicksPerSecond) === 0) {
+        try {
+            roadmaker.tryTickIteration();
+        }
+        catch (e) {
+            Debug.error(`Failed to complete road: ${e}`);
+            roadmaker.cancelRoad();
+        }
     }
     system.run(mainTick);
 }
-system.run(mainTick);
+function help() {
+    Debug.info("Help: /scriptevent chonky:help");
+    Debug.info("Make Road: /scriptevent chonky:makeroad [length]");
+    Debug.info("Cancel Road: /scriptevent chonky:cancel");
+    Debug.info("Style Road: /scriptevent chonky:assign [roadblock_type]=[minecraft_block_id]");
+    Debug.info("Road Block Types:");
+    Debug.info("- Foundation");
+    Debug.info("- Wall");
+    Debug.info("- Path");
+    Debug.info("- Post");
+    Debug.info("- Light");
+}
+// listen for script events
 system.afterEvents.scriptEventReceive.subscribe((event) => {
     if (event.id === "chonky:makeroad") {
         const length = parseInt(event.message);
         // assume player 1 for now
-        var plyr = world.getAllPlayers()[0];
-        if (plyr != null) {
+        let plyr = world.getAllPlayers()[0];
+        if (plyr != null && roadmaker.isRoadInProgress() === false) {
             const coord = plyr.getHeadLocation();
             const view = plyr.getViewDirection();
             coord.y -= HeadHeightInBlocks;
-            Debug.debug("Making road: " + length);
-            let rm = new RoadMaker();
-            rm.createRoad(coord, view, length);
+            Debug.info("Making road: " + length);
+            roadmaker.startNewRoad(coord, view, length);
         }
         else {
-            Debug.error("Cannot execute command because initiator was null.");
+            Debug.error("Cannot execute command because road was in progress or no player was found.");
         }
     }
+    if (event.id === "chonky:cancelroad") {
+        roadmaker.cancelRoad();
+    }
+    if (event.id === "chonky:assign") {
+        const arg = event.message;
+        let kvp = arg.split("=");
+        if (kvp.length == 2) {
+            roadmaker.tryAssignBlockType(kvp[0], kvp[1]);
+        }
+    }
+    if (event.id == "chonky:help") {
+        help();
+    }
 });
+// start application
+Debug.trace("Starting main tick listener");
+system.run(mainTick);
 
 //# sourceMappingURL=../../_chonky_cabbageDebug/main.js.map

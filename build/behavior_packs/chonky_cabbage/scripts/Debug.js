@@ -26,7 +26,7 @@ export default class Debug {
     }
     static log(message, level) {
         if (Debug.Level <= level) {
-            world.sendMessage(`${level} - ${message}`);
+            world.sendMessage(`${LogLevel[level]}: ${message}`);
         }
     }
     // converts radians to degrees, usually to prettify for debugging

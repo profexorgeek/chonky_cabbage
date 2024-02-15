@@ -41,7 +41,7 @@ export default class Debug {
   {
     if(Debug.Level <= level)
     {
-      world.sendMessage(`${level} - ${message}`);
+      world.sendMessage(`${LogLevel[level]}: ${message}`);
     }
   }
 
