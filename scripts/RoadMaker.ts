@@ -3,234 +3,118 @@ import Debug from "./Debug";
 
 export default class RoadMaker {
 
-  // creates a road of the provided length and block type
-  // starting at the coordinates specified and at the view angle provided
-  static makeSimpleRoad(
-    blockPerm:BlockPermutation,
-    length: number,
-    width: number,
-    coord: Vector3,
-    viewDirection: Vector3
-  )
+  public Foundation =  BlockPermutation.resolve("minecraft:cobblestone");
+  public Wall =        BlockPermutation.resolve("minecraft:cobblestone_wall");
+  public Path =        BlockPermutation.resolve("minecraft:bamboo_planks");
+  public Post =        BlockPermutation.resolve("minecraft:bamboo_fence");
+  public Light =       BlockPermutation.resolve("minecraft:lantern");
+
+  // gets a cardinally-aligned value expressed as an integer where 0 = East, 1 = North, etc
+  static getCardinalInteger(viewDirection:Vector3): number
   {
-    // we use this to determine where to start the left border of the road
-    let halfWidth = Math.ceil(width / 2);
+    // figure out our 2d look angle
+    let lookAngle2d = Math.atan2(viewDirection.z, viewDirection.x);
 
-    // we use this to determine whether the player is looking more Xward or Zward
-    // which determines which dimension the road width applies to
-    let dirMultiplier = (Math.abs(coord.x) > Math.abs(coord.z)) ?
-      {x: 0, y: 1, z: 1} :
-      {x: 1, y: 1, z: 0};
-
-    for(var i = 0; i < length; i++)
+    // regulate our angle so it's positive
+    while(lookAngle2d < 0)
     {
-      for(var w = -halfWidth; w < halfWidth; w++)
-      {
-        let currentCoord = {
-          x: Math.round(coord.x + (viewDirection.x * i)) + (w * dirMultiplier.x),
-          y: coord.y,
-          z: Math.round(coord.z + (viewDirection.z * i)) + (w * dirMultiplier.z)
-        };
-        this.setBlock(blockPerm, currentCoord);
-      }
+      lookAngle2d += (Math.PI * 2);
     }
+
+    // clamp our look angle to a cardinal coordinate
+    let cardinal = Math.round(lookAngle2d / (Math.PI / 2));
+
+    // clamp our look angle to 0 - 3
+    cardinal = cardinal > 3 ? 0 : cardinal;
+
+    return cardinal;
   }
 
-  
-  // converts a view direction as an arbitrary 2d angle, into an angle that aligns
-  // with the nearest cardinal coordinate
-  static getViewDirectionAsCardinalClampedRadians(viewDirection: Vector3): number
+  createRoad(startCoord: Vector3, viewDirection: Vector3, length: number)
   {
-    const halfPi = Math.PI / 2;
-    let viewAngle2d:number = Math.atan2(viewDirection.z, viewDirection.x);
-    let cardinalDirection:number = Math.round(viewAngle2d / halfPi);
-    let clampedAngle = cardinalDirection * halfPi;
+    Debug.debug(`Starting ${length} road at ${Debug.printCoordinate3(startCoord)}.`)
 
-    Debug.debug(`Clamped ${Debug.toDegrees(viewAngle2d)} to ${Debug.toDegrees(clampedAngle)}.`);
+    // round our look angle to a cardinal direction, expressed as an integer where 0 = East
+    const cardinalInt = RoadMaker.getCardinalInteger(viewDirection);
 
-    return clampedAngle;
-  }
+    Debug.debug(`Our cardinal integer is: ${cardinalInt}`);
 
-
-  static makeRoadOld(coord: Vector3, viewDirection: Vector3, length: number)
-  {
-    Debug.debug(`Starting ${length} road at ${Debug.printCoordinate3(coord)}.`);
-    
-    // define our road blocks
-    const foundation = BlockPermutation.resolve("minecraft:cobblestone");
-    const wall = BlockPermutation.resolve("minecraft:cobblestone_wall");
-    const path = BlockPermutation.resolve("minecraft:bamboo_planks");
-    const post = BlockPermutation.resolve("minecraft:bamboo_fence");
-    const light = BlockPermutation.resolve("minecraft:lantern");
-
-    const lookAngle2d = Math.atan2(viewDirection.z, viewDirection.x);
-    const cardinalInt = Math.round(lookAngle2d / Math.PI / 2);
-
-    
-
-  }
-
-  static makeXAxisStrip(center:Vector3)
-  {
-    const foundation =  BlockPermutation.resolve("minecraft:cobblestone");
-    const wall =        BlockPermutation.resolve("minecraft:cobblestone_wall");
-    const path =        BlockPermutation.resolve("minecraft:bamboo_planks");
-    const post =        BlockPermutation.resolve("minecraft:bamboo_fence");
-    const light =       BlockPermutation.resolve("minecraft:lantern");
-
-    this.setBlock(foundation,{x:center.x,y:center.y,z:center.z+2});
-    this.setBlock(wall,{x:center.x,y:center.y,z:center.z+1});
-    this.setBlock(wall,{x:center.x,y:center.y,z:center.z});
-    this.setBlock(wall,{x:center.x,y:center.y,z:center.z-1});
-    this.setBlock(foundation,{x:center.x,y:center.y,z:center.z-2});
-  }
-
-  static makeYAxisStrip(center:Vector3)
-  {
-    
-  }
-
-
-
-  // makes a pretty road starting at "coord", extending "length" and in the
-  // nearest straight direction
-  static makeRoadOld(coord: Vector3, viewDirection: Vector3, length: number)
-  {
-    Debug.debug(`Starting ${length} road at ${Debug.printCoordinate3(coord)}.`);
-    
-    // define our road blocks
-    const foundation = BlockPermutation.resolve("minecraft:cobblestone");
-    const wall = BlockPermutation.resolve("minecraft:cobblestone_wall");
-    const path = BlockPermutation.resolve("minecraft:bamboo_planks");
-    const post = BlockPermutation.resolve("minecraft:bamboo_fence");
-    const light = BlockPermutation.resolve("minecraft:lantern");
-
-    // get an angle that is clamped to cardinal directions
-    let angle = this.getViewDirectionAsCardinalClampedRadians(viewDirection);
-    let direction = {x: Math.cos(angle), y:1, z:Math.sin(angle)};
-
-    Debug.debug(`Got matrix: ${Debug.printCoordinate3(direction)}`);
-
-    // walk the path length
+    // loop through our length, creating strips of road depending on our cardinal alignment
     for(let i = 0; i < length; i++)
     {
+      let drawLights = i % 8 === 0;
+      let drawSupports = i % 16 === 0;
 
-
-
-
-
-      // left wall foundation
-      this.setBlock(foundation, {
-        x: coord.x + (direction.x * i) + (direction.z * 2),
-        y: coord.y,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // left wall
-      this.setBlock(wall, {
-        x: coord.x + (direction.x * i) + (direction.z * 2),
-        y: coord.y + 1,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-      
-      // left path block
-      this.setBlock(path, {
-        x: coord.x + (direction.x * i) + (direction.z * 1),
-        y: coord.y,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // center path block
-      this.setBlock(path, {
-        x: coord.x + (direction.x * i) + (direction.z * 0),
-        y: coord.y,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // right path block
-      this.setBlock(path, {
-        x: coord.x + (direction.x * i) + (direction.z * -1),
-        y: coord.y,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // right wall foundation
-      this.setBlock(foundation, {
-        x: coord.x + (direction.x * i) + (direction.z * -2),
-        y: coord.y,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // right wall
-      this.setBlock(wall, {
-        x: coord.x + (direction.x * i) + (direction.z * -2),
-        y: coord.y + 1,
-        z: coord.z + (direction.z * i) - (direction.x * 0)
-      });
-
-      // every 8 blocks, place light posts
-      if(i % 8 == 0)
-      {
-        // left posts and light
-        this.setBlock(post, {
-          x: coord.x + (direction.x * i) + (direction.z * 2),
-          y: coord.y + 2,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
-        this.setBlock(post, {
-          x: coord.x + (direction.x * i) + (direction.z * 2),
-          y: coord.y + 3,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
-        this.setBlock(light, {
-          x: coord.x + (direction.x * i) + (direction.z * 2),
-          y: coord.y + 4,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
-
-        // right posts and light
-        this.setBlock(post, {
-          x: coord.x + (direction.x * i) + (direction.z * -2),
-          y: coord.y + 2,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
-        this.setBlock(post, {
-          x: coord.x + (direction.x * i) + (direction.z * -2),
-          y: coord.y + 3,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
-        this.setBlock(light, {
-          x: coord.x + (direction.x * i) + (direction.z * -2),
-          y: coord.y + 4,
-          z: coord.z + (direction.z * i) - (direction.x * 0)
-        });
+      switch(cardinalInt){
+        case 0:
+          this.makeXAxisStrip({x:startCoord.x + i, y: startCoord.y, z:startCoord.z}, drawLights, drawSupports);
+          break;
+        case 1:
+          this.makeZAxisStrip({x:startCoord.x, y: startCoord.y, z:startCoord.z + i}, drawLights, drawSupports);
+          break;
+        case 2:
+          this.makeXAxisStrip({x:startCoord.x - i, y: startCoord.y, z:startCoord.z}, drawLights, drawSupports);
+          break;
+        case 3:
+          this.makeZAxisStrip({x:startCoord.x, y: startCoord.y, z:startCoord.z - i}, drawLights, drawSupports);
+          break;
       }
     }
   }
 
-  static get2dPositionOffsetFromAngle(offset: Vector3, angle:number)
+  // creates a strip of road aligned with the X axis
+  makeXAxisStrip(center:Vector3, drawLights:boolean = false, drawSupportst:boolean = false)
   {
-    return {
-      x: Math.round(Math.cos(angle) * offset.x),
-      y: 1,
-      z: Math.round(Math.sin(angle) * offset.z)
-    };
+    // foundation
+    this.setBlock(this.Foundation,{x:center.x,y:center.y,z:center.z+2});
+    this.setBlock(this.Path,{x:center.x,y:center.y,z:center.z+1});
+    this.setBlock(this.Path,{x:center.x,y:center.y,z:center.z});
+    this.setBlock(this.Path,{x:center.x,y:center.y,z:center.z-1});
+    this.setBlock(this.Foundation,{x:center.x,y:center.y,z:center.z-2});
+
+    // walls
+    this.setBlock(this.Wall,{x:center.x,y:center.y+1,z:center.z+2});
+    this.setBlock(this.Wall,{x:center.x,y:center.y+1,z:center.z-2});
+
+    if(drawLights === true)
+    {
+      this.makeLamp({x:center.x,y:center.y,z:center.z+2});
+      this.makeLamp({x:center.x,y:center.y,z:center.z-2});
+    }
   }
 
-  static multiplyVector3(vec: Vector3, multiplier: number): Vector3
+  // creates a strip of road aligned with the Z axis
+  makeZAxisStrip(center:Vector3, drawLights:boolean = false, drawSupportst:boolean = false)
   {
-    return {
-      x:vec.x*multiplier,
-      y:vec.y*multiplier,
-      z:vec.z*multiplier};
+    // foundation
+    this.setBlock(this.Foundation,{x:center.x-2,y:center.y,z:center.z});
+    this.setBlock(this.Path,{x:center.x-1,y:center.y,z:center.z});
+    this.setBlock(this.Path,{x:center.x,y:center.y,z:center.z});
+    this.setBlock(this.Path,{x:center.x+1,y:center.y,z:center.z});
+    this.setBlock(this.Foundation,{x:center.x+2,y:center.y,z:center.z});
+
+    // walls
+    this.setBlock(this.Wall,{x:center.x+2,y:center.y+1,z:center.z});
+    this.setBlock(this.Wall,{x:center.x-2,y:center.y+1,z:center.z});
+
+    if(drawLights === true)
+    {
+      this.makeLamp({x:center.x+2,y:center.y,z:center.z});
+      this.makeLamp({x:center.x-2,y:center.y,z:center.z});
+    }
+  }
+
+  makeLamp(center:Vector3)
+  {
+    this.setBlock(this.Foundation,{x: center.x,y:center.y+1,z:center.z});
+    this.setBlock(this.Post,{x: center.x,y:center.y+2,z:center.z});
+    this.setBlock(this.Post,{x: center.x,y:center.y+3,z:center.z});
+    this.setBlock(this.Light,{x: center.x,y:center.y+4,z:center.z});
   }
 
   // sets the block at the provided coordinates to the provided permutation
-  static setBlock(
-    blockPerm:BlockPermutation,
-    coord:Vector3
-  ) {
-    Debug.debug(`Setting block at ${Debug.printCoordinate3(coord)}.`);
+  setBlock(blockPerm:BlockPermutation, coord:Vector3) {
+    Debug.trace(`Setting block at ${Debug.printCoordinate3(coord)}.`);
     const overworld = world.getDimension("overworld");
     overworld.getBlock(coord)?.setPermutation(blockPerm);
   }
