@@ -73,6 +73,7 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
 
     if(plyr != null && roadmaker.isRoadInProgress() === false)
     {
+
       const coord = plyr.getHeadLocation();
       const view = plyr.getViewDirection();
       coord.y -= HeadHeightInBlocks;

@@ -24,6 +24,8 @@ export default class RoadMaker {
   // max distance bridge supports can go
   private MaxBridgeSupportHeight:number = 64;
 
+  private StairDirectionStateName:string = "weirdo_direction";
+
   // these properties allow implementations to specify the specific
   // road style
   public Dimension =   "overworld";
@@ -34,6 +36,7 @@ export default class RoadMaker {
   public Path =        BlockPermutation.resolve("minecraft:bamboo_planks");
   public Post =        BlockPermutation.resolve("minecraft:bamboo_fence");
   public Light =       BlockPermutation.resolve("minecraft:lantern");
+  public Stair =       BlockPermutation.resolve("minecraft:bamboo_stairs");
 
   // this maps block types to an integer index, allowing easy
   // creation of visual templates
@@ -43,8 +46,18 @@ export default class RoadMaker {
     this.Wall,        //2
     this.Path,        //3
     this.Post,        //4
-    this.Light        //5
+    this.Light,       //5
+    this.Stair        //6
   ]
+
+  // converts my cardinal directions into stair cardinal
+  // directions
+  private stairCardinalConversion:Array<number> = [
+    0, // cardinal west 0 = stair west 0
+    2, // cardinal south 1 = stair south 3
+    1, // cardinal east 2 = stair east 1
+    3  // cardinal north 3 = stair north 2
+  ];
 
   // these are template 5x5 "slices" of a type of road. These use the
   // int list above to resolve blocks when rendering the slice
@@ -59,7 +72,7 @@ export default class RoadMaker {
     5,0,0,0,5,
     4,0,0,0,4,
     4,0,0,0,4,
-    1,0,0,0,1,
+    2,0,0,0,2,
     1,3,3,3,1];
   
   private RoadTunnel:Array<number> = [
@@ -75,6 +88,20 @@ export default class RoadMaker {
     5,0,0,0,5,
     1,0,0,0,1,
     1,3,3,3,1];
+
+  private RoadStairNormal:Array<number> = [
+    0,0,0,0,0,
+    0,0,0,0,0,
+    2,0,0,0,2,
+    1,6,6,6,1,
+    1,3,3,3,1];
+
+    private RoadStairLit:Array<number> = [
+      0,0,0,0,0,
+      5,0,0,0,5,
+      2,0,0,0,2,
+      1,6,6,6,1,
+      1,3,3,3,1];
 
 
   constructor()
@@ -127,6 +154,9 @@ export default class RoadMaker {
         case "Light":
           this.Light = block;
           break;
+        case "Stair":
+          this.Stair = block;
+          break;
       }
 
       this.blockInts =[
@@ -135,7 +165,8 @@ export default class RoadMaker {
         this.Wall,        //2
         this.Path,        //3
         this.Post,        //4
-        this.Light        //5
+        this.Light,       //5
+        this.Stair        //6
       ];
     }
     catch(e)
@@ -158,8 +189,6 @@ export default class RoadMaker {
       return;
     }
 
-    Debug.debug(`Starting ${length} road at ${Debug.printCoordinate3(startCoord)}.`)
-
     this.queueInProgress = true;
     this.queueCardinalDirection = RoadMaker.getCardinalInteger(viewDirection);
     this.queueCurrentIteration = 0;
@@ -173,6 +202,8 @@ export default class RoadMaker {
       y: startCoord.y,
       z: startCoord.z
     };
+
+    Debug.debug(`Starting road(${length}) at ${Debug.printCoordinate3(startCoord)} and direction ${this.queueCardinalDirection}.`);
   }
 
   // builds a road segment for this tick, updates the inProgress status
@@ -196,6 +227,7 @@ export default class RoadMaker {
     {
       let drawLights = i % 8 === 0;
       let drawSupports = i % 16 === 0;
+      let changeY = 0;
 
       // dynamically set our length-walking coordinate
       let coordToChange: keyof Vector3 = this.queueCardinalDirection % 2 == 0 ? "x" : "z";
@@ -205,7 +237,14 @@ export default class RoadMaker {
       // resolve our slice template
       let sliceTemplate = drawLights ? this.RoadNormalLit : this.RoadNormal;
 
-      // figure out if we should be tunneling
+      // if the second block is not air, we should stair up and raise our road elevation
+      if(this.getBlock({x: this.queueWalkingCoord.x, y: this.queueWalkingCoord.y + 1, z: this.queueWalkingCoord.z})?.permutation !== this.Air)
+      {
+        sliceTemplate = drawLights ? this.RoadStairLit : this.RoadStairNormal;
+        changeY = +1;
+      }
+
+      // if the top block is not air, we should tunnel
       if(this.getBlock({x: this.queueWalkingCoord.x, y: this.queueWalkingCoord.y + 4, z: this.queueWalkingCoord.z})?.permutation !== this.Air)
       {
         sliceTemplate = drawLights ? this.RoadTunnelLit : this.RoadTunnel;
@@ -227,9 +266,12 @@ export default class RoadMaker {
         }
       }
 
-      // render our road
       try {
+        // render our road
         this.renderSlice(sliceTemplate, this.queueWalkingCoord, this.queueCardinalDirection);
+
+        // apply any Y change
+        this.queueWalkingCoord.y += changeY;
       }
       catch(e)
       {
@@ -271,6 +313,14 @@ export default class RoadMaker {
 
         // resolve the block type based on the int
         var block = this.blockInts[blockIndex];
+
+        // this block is a stair, set direction based on cardinal direction
+        if(blockIndex == 6)
+        {
+          let stairBit = this.stairCardinalConversion[this.queueCardinalDirection];
+          Debug.trace(`Setting stair bit for ${cardinalDirection} to ${stairBit}.`);
+          block = block.withState(this.StairDirectionStateName, stairBit);
+        }
 
         // transform our slice based on the cardinal direction
         switch(cardinalDirection)
