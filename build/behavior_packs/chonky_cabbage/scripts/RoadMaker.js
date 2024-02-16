@@ -6,7 +6,12 @@ export var WorkType;
     WorkType[WorkType["Road"] = 1] = "Road";
     WorkType[WorkType["StairsUp"] = 2] = "StairsUp";
     WorkType[WorkType["StairsDown"] = 3] = "StairsDown";
-    WorkType[WorkType["Corner"] = 4] = "Corner";
+    WorkType[WorkType["CornerLeft"] = 4] = "CornerLeft";
+    WorkType[WorkType["CornerRight"] = 5] = "CornerRight";
+    WorkType[WorkType["TeeLeft"] = 6] = "TeeLeft";
+    WorkType[WorkType["TeeRight"] = 7] = "TeeRight";
+    WorkType[WorkType["Intersection"] = 8] = "Intersection";
+    WorkType[WorkType["PoweredRail"] = 9] = "PoweredRail";
 })(WorkType || (WorkType = {}));
 // For block definitions, see:
 // https://www.npmjs.com/package/@minecraft/vanilla-data?activeTab=code
@@ -24,13 +29,12 @@ export default class RoadMaker {
         this.qLength = 0;
         this.qCardinal = 0;
         this.qWorkType = WorkType.None;
-        // max amount of road slices that will be processed in a
-        // single tick
         this.SlicesPerTick = 2;
-        // max distance bridge supports can go
         this.MaxBridgeSupportHeight = 64;
-        // name of the state that affects stair direction
         this.StairDirectionStateName = "weirdo_direction";
+        this.DistanceBetweenLights = 8;
+        this.DistanceBetweenSupports = 16;
+        this.DistanceBetweenFancy = 16;
         // these properties allow implementations to specify the specific
         // road style
         this.Dimension = "overworld";
@@ -42,6 +46,9 @@ export default class RoadMaker {
         this.Post = BlockPermutation.resolve("minecraft:bamboo_fence");
         this.Light = BlockPermutation.resolve("minecraft:lantern");
         this.Stair = BlockPermutation.resolve("minecraft:bamboo_stairs");
+        this.Rail = BlockPermutation.resolve("minecraft:rail");
+        this.GoldenRail = BlockPermutation.resolve("minecraft:golden_rail");
+        this.RedTorch = BlockPermutation.resolve("minecraft:redstone_torch");
         // this maps block types to an integer index, allowing easy
         // creation of visual templates
         this.blockInts = [
@@ -51,7 +58,10 @@ export default class RoadMaker {
             this.Path,
             this.Post,
             this.Light,
-            this.Stair //6
+            this.Stair,
+            this.Rail,
+            this.GoldenRail,
+            this.RedTorch, //9
         ];
         // converts my cardinal directions into stair cardinal
         // directions
@@ -59,7 +69,7 @@ export default class RoadMaker {
             0,
             2,
             1,
-            3 // cardinal north 3 = stair north 2
+            3, // cardinal north 3 = stair north 2
         ];
         // these are template 5x5 "slices" of a type of road. These use the
         // int list above to resolve blocks when rendering the slice
@@ -71,6 +81,13 @@ export default class RoadMaker {
             1, 3, 3, 3, 1
         ];
         this.RoadNormalLit = [
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            5, 0, 0, 0, 5,
+            2, 0, 0, 0, 2,
+            1, 3, 3, 3, 1
+        ];
+        this.RoadFancy = [
             5, 0, 0, 0, 5,
             4, 0, 0, 0, 4,
             4, 0, 0, 0, 4,
@@ -86,10 +103,17 @@ export default class RoadMaker {
         ];
         this.RoadTunnelLit = [
             1, 3, 3, 3, 1,
+            3, 0, 0, 0, 3,
+            5, 0, 0, 0, 5,
+            3, 0, 0, 0, 3,
+            1, 3, 3, 3, 1
+        ];
+        this.RoadTunnelFancy = [
+            1, 1, 1, 1, 1,
             1, 0, 0, 0, 1,
             5, 0, 0, 0, 5,
             1, 0, 0, 0, 1,
-            1, 3, 3, 3, 1
+            1, 1, 1, 1, 1
         ];
         this.RoadStairNormal = [
             0, 0, 0, 0, 0,
@@ -99,10 +123,52 @@ export default class RoadMaker {
             1, 1, 1, 1, 1
         ];
         this.RoadStairLit = [
-            0, 0, 0, 0, 0,
             5, 0, 0, 0, 5,
+            4, 0, 0, 0, 4,
             2, 0, 0, 0, 2,
             1, 6, 6, 6, 1,
+            1, 1, 1, 1, 1
+        ];
+        this.RailNormal = [
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            2, 0, 8, 0, 2,
+            1, 3, 3, 3, 1
+        ];
+        this.RailLit = [
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            5, 0, 0, 0, 5,
+            2, 0, 8, 9, 2,
+            1, 3, 3, 3, 1
+        ];
+        this.RailFancy = [
+            5, 0, 0, 0, 5,
+            4, 0, 0, 0, 4,
+            4, 0, 0, 0, 4,
+            2, 0, 8, 9, 2,
+            1, 3, 3, 3, 1
+        ];
+        this.RailTunnel = [
+            1, 3, 3, 3, 1,
+            1, 0, 0, 0, 1,
+            1, 0, 0, 0, 1,
+            1, 0, 8, 0, 1,
+            1, 3, 3, 3, 1
+        ];
+        this.RailTunnelLit = [
+            1, 3, 3, 3, 1,
+            3, 0, 0, 0, 3,
+            5, 0, 0, 0, 5,
+            3, 0, 8, 9, 3,
+            1, 3, 3, 3, 1
+        ];
+        this.RailTunnelFancy = [
+            1, 1, 1, 1, 1,
+            1, 0, 0, 0, 1,
+            5, 0, 0, 0, 5,
+            1, 0, 8, 9, 1,
             1, 1, 1, 1, 1
         ];
         Debug.debug("RoadMaker has been created...");
@@ -158,7 +224,7 @@ export default class RoadMaker {
                 this.Path,
                 this.Post,
                 this.Light,
-                this.Stair //6
+                this.Stair, //6
             ];
             Debug.info(`Set ${blockKey} to ${blockType}`);
         }
@@ -186,7 +252,7 @@ export default class RoadMaker {
         this.qCurrentCoord = {
             x: startCoord.x,
             y: startCoord.y,
-            z: startCoord.z
+            z: startCoord.z,
         };
         Debug.debug(`Starting road(${length}) at ${Debug.printCoordinate3(startCoord)} and direction ${this.qCardinal}.`);
     }
@@ -214,6 +280,9 @@ export default class RoadMaker {
                 case WorkType.StairsDown:
                     this.makeStair(i, -1);
                     break;
+                case WorkType.PoweredRail:
+                    this.makeRail(i);
+                    break;
             }
         }
         this.qIteration = thisTickEnd;
@@ -227,7 +296,7 @@ export default class RoadMaker {
         // dynamically set our length-walking coordinate
         let coordToChange = this.qCardinal % 2 == 0 ? "x" : "z";
         let directionModifier = this.qCardinal > 1 ? -1 : 1;
-        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + (i * directionModifier);
+        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
         let sliceTemplate = drawLights ? this.RoadStairLit : this.RoadStairNormal;
         if (dir > 0) {
             this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
@@ -239,21 +308,62 @@ export default class RoadMaker {
         }
     }
     makeRoad(i) {
-        let drawLights = i % 8 === 0;
-        let drawSupports = i % 16 === 0;
+        let drawLights = i % this.DistanceBetweenLights === 0;
+        let drawSupports = i % this.DistanceBetweenSupports === 0;
+        let drawFancy = i % this.DistanceBetweenFancy === 0;
         // dynamically set our length-walking coordinate
         let coordToChange = this.qCardinal % 2 == 0 ? "x" : "z";
         let directionModifier = this.qCardinal > 1 ? -1 : 1;
-        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + (i * directionModifier);
+        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
+        // set our default slice type
         let sliceTemplate = drawLights ? this.RoadNormalLit : this.RoadNormal;
+        sliceTemplate = drawFancy ? this.RoadFancy : sliceTemplate;
         // if the top block is not air, we should tunnel
-        if (this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !== this.Air) {
+        if (this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !==
+            this.Air) {
             sliceTemplate = drawLights ? this.RoadTunnelLit : this.RoadTunnel;
+            sliceTemplate = drawFancy ? this.RoadTunnelFancy : sliceTemplate;
         }
         // generate supports
         let supportY = { x: this.qCurrentCoord.x, y: this.qCurrentCoord.y - 1, z: this.qCurrentCoord.z };
         let supportHeight = 0;
-        while (drawSupports && this.getBlock(supportY)?.permutation !== this.Dirt && supportHeight < this.MaxBridgeSupportHeight) {
+        while (drawSupports &&
+            this.getBlock(supportY)?.permutation !== this.Dirt &&
+            supportHeight < this.MaxBridgeSupportHeight) {
+            try {
+                this.setBlock(this.Foundation, supportY);
+                supportY.y -= 1;
+                supportHeight++;
+            }
+            catch (e) {
+                break;
+            }
+        }
+        this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
+    }
+    makeRail(i) {
+        let drawLights = i % this.DistanceBetweenLights === 0;
+        let drawSupports = i % this.DistanceBetweenSupports === 0;
+        let drawFancy = i % this.DistanceBetweenFancy === 0;
+        // dynamically set our length-walking coordinate
+        let coordToChange = this.qCardinal % 2 == 0 ? "x" : "z";
+        let directionModifier = this.qCardinal > 1 ? -1 : 1;
+        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
+        // set our default slice type
+        let sliceTemplate = drawLights ? this.RailLit : this.RailNormal;
+        sliceTemplate = drawFancy ? this.RailFancy : sliceTemplate;
+        // if the top block is not air, we should tunnel
+        if (this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !==
+            this.Air) {
+            sliceTemplate = drawLights ? this.RailTunnelLit : this.RailTunnel;
+            sliceTemplate = drawFancy ? this.RailTunnelFancy : sliceTemplate;
+        }
+        // generate supports
+        let supportY = { x: this.qCurrentCoord.x, y: this.qCurrentCoord.y - 1, z: this.qCurrentCoord.z };
+        let supportHeight = 0;
+        while (drawSupports &&
+            this.getBlock(supportY)?.permutation !== this.Dirt &&
+            supportHeight < this.MaxBridgeSupportHeight) {
             try {
                 this.setBlock(this.Foundation, supportY);
                 supportY.y -= 1;
@@ -283,7 +393,7 @@ export default class RoadMaker {
             // and center the slice at the bottom center block
             for (let col = 0; col < 5; col++) {
                 // get the block int from the slice template
-                var blockIndex = sliceTemplate[(row * 5) + col];
+                var blockIndex = sliceTemplate[row * 5 + col];
                 // resolve the block type based on the int
                 var block = this.blockInts[blockIndex];
                 // this block is a stair, set direction based on cardinal direction
@@ -299,28 +409,28 @@ export default class RoadMaker {
                         this.setBlock(block, {
                             x: coord.x,
                             y: coord.y + (rowOffset - row),
-                            z: coord.z + (colOffset + col)
+                            z: coord.z + (colOffset + col),
                         });
                         break;
                     case 1: // south
                         this.setBlock(block, {
                             x: coord.x + (colOffset + col),
                             y: coord.y + (rowOffset - row),
-                            z: coord.z
+                            z: coord.z,
                         });
                         break;
                     case 2: // east
                         this.setBlock(block, {
                             x: coord.x,
                             y: coord.y + (rowOffset - row),
-                            z: coord.z - (colOffset + col)
+                            z: coord.z - (colOffset + col),
                         });
                         break;
                     case 3: // north
                         this.setBlock(block, {
                             x: coord.x - (colOffset + col),
                             y: coord.y + (rowOffset - row),
-                            z: coord.z
+                            z: coord.z,
                         });
                         break;
                 }
@@ -347,7 +457,7 @@ export default class RoadMaker {
         let lookAngle2d = Math.atan2(viewDirection.z, viewDirection.x);
         // regulate our angle so it's positive
         while (lookAngle2d < 0) {
-            lookAngle2d += (Math.PI * 2);
+            lookAngle2d += Math.PI * 2;
         }
         // clamp our look angle to a cardinal coordinate
         let cardinal = Math.round(lookAngle2d / (Math.PI / 2));

@@ -76,6 +76,11 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
                 roadmaker.startNewRoad(coord, view, length);
             }
             break;
+        case "rd:rail":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length, WorkType.PoweredRail);
+            }
         case "rd:stairs_up":
             if (roadmaker.isRoadInProgress() === false) {
                 const length = parseInt(event.message);
