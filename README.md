@@ -6,6 +6,9 @@ Chonky Cabbage (CC hereafter) is a randomly-generated project name for my 2024 S
 
 CC builds configurable roads, bridges, tunnels, stairs, and railways.
 
+A video of the first version of this is here:
+https://youtu.be/qbY94TFNih4
+
 ## Usage
 
 Once you add the CC Add-On, you can invoke commands from the Minecraft terminal.
