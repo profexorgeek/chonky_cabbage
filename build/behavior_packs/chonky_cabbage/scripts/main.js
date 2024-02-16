@@ -42,6 +42,8 @@ function help() {
     Debug.info("Make Road: /scriptevent rd:road 10");
     Debug.info("Make Stairs Up: /scriptevent rd:stairs_up 10");
     Debug.info("Make Stairs Down: /scriptevent rd:stairs_down 10");
+    Debug.info("Make Rails Up: /scriptevent rd:rail_up 10");
+    Debug.info("Make Rails Down: /scriptevent rd:rail_down 10");
     Debug.info("Cancel Road: /scriptevent rd:cancel");
     Debug.info("Style Road: /scriptevent rd:assign Path=birch_planks");
     Debug.info("Road Block Types:");
@@ -79,7 +81,7 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
         case "rd:rail":
             if (roadmaker.isRoadInProgress() === false) {
                 const length = parseInt(event.message);
-                roadmaker.startNewRoad(coord, view, length, WorkType.PoweredRail);
+                roadmaker.startNewRoad(coord, view, length, WorkType.Rail);
             }
         case "rd:stairs_up":
             if (roadmaker.isRoadInProgress() === false) {
@@ -91,6 +93,18 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
             if (roadmaker.isRoadInProgress() === false) {
                 const length = parseInt(event.message);
                 roadmaker.startNewRoad(coord, view, length, WorkType.StairsDown);
+            }
+            break;
+        case "rd:rail_up":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length, WorkType.RailUp);
+            }
+            break;
+        case "rd:rail_down":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length, WorkType.RailDown);
             }
             break;
         case "rd:assign":

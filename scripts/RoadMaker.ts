@@ -4,14 +4,16 @@ import Debug from "./Debug";
 export enum WorkType {
   None,
   Road,
+  Rail,
   StairsUp,
   StairsDown,
+  RailUp,
+  RailDown,
   CornerLeft,
   CornerRight,
   TeeLeft,
   TeeRight,
   Intersection,
-  PoweredRail
 }
 
 // For block definitions, see:
@@ -176,6 +178,20 @@ export default class RoadMaker {
     1, 0, 8, 9, 1, 
     1, 1, 1, 1, 1];
 
+    private RailStairNormal: Array<number> = [
+      0, 0, 0, 0, 0, 
+      0, 0, 0, 0, 0, 
+      2, 0, 0, 0, 2, 
+      1, 6, 8, 0, 1, 
+      1, 1, 1, 1, 1];
+  
+    private RailStairLit: Array<number> = [
+      5, 0, 0, 0, 5, 
+      4, 0, 0, 0, 4,
+      2, 0, 0, 0, 2, 
+      1, 6, 8, 9, 1, 
+      1, 1, 1, 1, 1];
+
   constructor() {
     Debug.debug("RoadMaker has been created...");
   }
@@ -290,16 +306,22 @@ export default class RoadMaker {
     for (let i = this.qIteration + 1; i <= thisTickEnd; i++) {
       switch (this.qWorkType) {
         case WorkType.Road:
-          this.makeRoad(i);
+          this.makeRoad(i, this.RoadNormal, this.RoadNormalLit, this.RoadFancy, this.RoadTunnel, this.RoadTunnelLit, this.RoadTunnelFancy);
           break;
         case WorkType.StairsUp:
-          this.makeStair(i, +1);
+          this.makeStair(i, +1, this.RoadStairNormal, this.RoadStairLit);
           break;
         case WorkType.StairsDown:
-          this.makeStair(i, -1);
+          this.makeStair(i, -1, this.RoadStairNormal, this.RoadStairLit);
           break;
-        case WorkType.PoweredRail:
-          this.makeRail(i);
+        case WorkType.RailUp:
+          this.makeStair(i, +1, this.RailStairNormal, this.RailStairLit);
+          break;
+        case WorkType.RailDown:
+          this.makeStair(i, -1, this.RailStairNormal, this.RailStairLit);
+          break;
+        case WorkType.Rail:
+          this.makeRoad(i, this.RailNormal, this.RailLit, this.RailFancy, this.RailTunnel, this.RailTunnelLit, this.RailTunnelFancy);
           break;
       }
     }
@@ -310,7 +332,7 @@ export default class RoadMaker {
     }
   }
 
-  private makeStair(i: number, dir: number = +1) {
+  private makeStair(i: number, dir: number = +1, stairNormal:Array<number>, stairLit:Array<number>) {
     let drawLights = i % 8 === 0;
     let drawSupports = i % 16 === 0;
 
@@ -319,7 +341,7 @@ export default class RoadMaker {
     let directionModifier = this.qCardinal > 1 ? -1 : 1;
     this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
 
-    let sliceTemplate = drawLights ? this.RoadStairLit : this.RoadStairNormal;
+    let sliceTemplate = drawLights ? stairLit : stairNormal;
 
     if (dir > 0) {
       this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
@@ -330,7 +352,7 @@ export default class RoadMaker {
     }
   }
 
-  private makeRoad(i: number) {
+  private makeRoad(i: number, normalSlice:Array<number>, litSlice:Array<number>, fancySlice:Array<number>, normalTunnel:Array<number>, litTunnel:Array<number>, fancyTunnel:Array<number>) {
     let drawLights = i % this.DistanceBetweenLights === 0;
     let drawSupports = i % this.DistanceBetweenSupports === 0;
     let drawFancy = i % this.DistanceBetweenFancy === 0;
@@ -341,60 +363,16 @@ export default class RoadMaker {
     this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
 
     // set our default slice type
-    let sliceTemplate = drawLights ? this.RoadNormalLit : this.RoadNormal;
-    sliceTemplate = drawFancy ? this.RoadFancy : sliceTemplate;
+    let sliceTemplate = drawLights ? litSlice : normalSlice;
+    sliceTemplate = drawFancy ? fancySlice : sliceTemplate;
 
     // if the top block is not air, we should tunnel
     if (
       this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !==
       this.Air
     ) {
-      sliceTemplate = drawLights ? this.RoadTunnelLit : this.RoadTunnel;
-      sliceTemplate = drawFancy ? this.RoadTunnelFancy : sliceTemplate;
-    }
-
-    // generate supports
-    let supportY = { x: this.qCurrentCoord.x, y: this.qCurrentCoord.y - 1, z: this.qCurrentCoord.z };
-    let supportHeight = 0;
-    while (
-      drawSupports &&
-      this.getBlock(supportY)?.permutation !== this.Dirt &&
-      supportHeight < this.MaxBridgeSupportHeight
-    ) {
-      try {
-        this.setBlock(this.Foundation, supportY);
-        supportY.y -= 1;
-        supportHeight++;
-      } catch (e) {
-        break;
-      }
-    }
-
-    this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
-  }
-
-  private makeRail(i: number)
-  {
-    let drawLights = i % this.DistanceBetweenLights === 0;
-    let drawSupports = i % this.DistanceBetweenSupports === 0;
-    let drawFancy = i % this.DistanceBetweenFancy === 0;
-
-    // dynamically set our length-walking coordinate
-    let coordToChange: keyof Vector3 = this.qCardinal % 2 == 0 ? "x" : "z";
-    let directionModifier = this.qCardinal > 1 ? -1 : 1;
-    this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + i * directionModifier;
-
-    // set our default slice type
-    let sliceTemplate = drawLights ? this.RailLit : this.RailNormal;
-    sliceTemplate = drawFancy ? this.RailFancy : sliceTemplate;
-
-    // if the top block is not air, we should tunnel
-    if (
-      this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !==
-      this.Air
-    ) {
-      sliceTemplate = drawLights ? this.RailTunnelLit : this.RailTunnel;
-      sliceTemplate = drawFancy ? this.RailTunnelFancy : sliceTemplate;
+      sliceTemplate = drawLights ? litTunnel : normalTunnel;
+      sliceTemplate = drawFancy ? fancyTunnel : sliceTemplate;
     }
 
     // generate supports
