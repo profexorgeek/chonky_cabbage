@@ -1,5 +1,13 @@
 import { world, BlockPermutation } from "@minecraft/server";
 import Debug from "./Debug";
+export var WorkType;
+(function (WorkType) {
+    WorkType[WorkType["None"] = 0] = "None";
+    WorkType[WorkType["Road"] = 1] = "Road";
+    WorkType[WorkType["StairsUp"] = 2] = "StairsUp";
+    WorkType[WorkType["StairsDown"] = 3] = "StairsDown";
+    WorkType[WorkType["Corner"] = 4] = "Corner";
+})(WorkType || (WorkType = {}));
 // For block definitions, see:
 // https://www.npmjs.com/package/@minecraft/vanilla-data?activeTab=code
 export default class RoadMaker {
@@ -8,18 +16,20 @@ export default class RoadMaker {
         // of where we are in the current work
         // queue, allowing us to do long-running
         // work across multiple ticks
-        this.queueInProgress = false;
-        this.queueStartCoord = { x: 0, y: 0, z: 0 };
-        this.queueWalkingCoord = { x: 0, y: 0, z: 0 };
-        this.queueViewDirection = { x: 0, y: 0, z: 0 };
-        this.queueCurrentIteration = 0;
-        this.queueRoadLength = 0;
-        this.queueCardinalDirection = 0;
+        this.qInProgress = false;
+        this.qStartCoord = { x: 0, y: 0, z: 0 };
+        this.qCurrentCoord = { x: 0, y: 0, z: 0 };
+        this.qViewDir = { x: 0, y: 0, z: 0 };
+        this.qIteration = 0;
+        this.qLength = 0;
+        this.qCardinal = 0;
+        this.qWorkType = WorkType.None;
         // max amount of road slices that will be processed in a
         // single tick
         this.SlicesPerTick = 2;
         // max distance bridge supports can go
         this.MaxBridgeSupportHeight = 64;
+        // name of the state that affects stair direction
         this.StairDirectionStateName = "weirdo_direction";
         // these properties allow implementations to specify the specific
         // road style
@@ -86,38 +96,39 @@ export default class RoadMaker {
             0, 0, 0, 0, 0,
             2, 0, 0, 0, 2,
             1, 6, 6, 6, 1,
-            1, 3, 3, 3, 1
+            1, 1, 1, 1, 1
         ];
         this.RoadStairLit = [
             0, 0, 0, 0, 0,
             5, 0, 0, 0, 5,
             2, 0, 0, 0, 2,
             1, 6, 6, 6, 1,
-            1, 3, 3, 3, 1
+            1, 1, 1, 1, 1
         ];
         Debug.debug("RoadMaker has been created...");
     }
     // returns whether a road is being built
     isRoadInProgress() {
-        return this.queueInProgress;
+        return this.qInProgress;
     }
     // returns where the road building is occuring so progress
     // can be traced
     getWorkPoint() {
-        return this.queueWalkingCoord;
+        return this.qCurrentCoord;
     }
     cancelRoad() {
-        this.queueInProgress = false;
-        this.queueStartCoord = { x: 0, y: 0, z: 0 };
-        this.queueWalkingCoord = { x: 0, y: 0, z: 0 };
-        this.queueViewDirection = { x: 0, y: 0, z: 0 };
-        this.queueCurrentIteration = 0;
-        this.queueRoadLength = 0;
-        this.queueCardinalDirection = 0;
+        this.qInProgress = false;
+        this.qStartCoord = { x: 0, y: 0, z: 0 };
+        this.qCurrentCoord = { x: 0, y: 0, z: 0 };
+        this.qViewDir = { x: 0, y: 0, z: 0 };
+        this.qIteration = 0;
+        this.qLength = 0;
+        this.qCardinal = 0;
+        this.qWorkType = WorkType.None;
     }
     tryAssignBlockType(blockKey, blockType) {
         try {
-            Debug.debug(`Setting ${blockKey} to ${blockType}`);
+            blockType = "minecraft:" + blockType;
             let block = BlockPermutation.resolve(blockType);
             switch (blockKey) {
                 case "Foundation":
@@ -139,6 +150,7 @@ export default class RoadMaker {
                     this.Stair = block;
                     break;
             }
+            // reset array
             this.blockInts = [
                 this.Air,
                 this.Foundation,
@@ -148,6 +160,7 @@ export default class RoadMaker {
                 this.Light,
                 this.Stair //6
             ];
+            Debug.info(`Set ${blockKey} to ${blockType}`);
         }
         catch (e) {
             Debug.error(`Couldn't locate block type: ${blockType}`);
@@ -156,90 +169,106 @@ export default class RoadMaker {
     }
     // starts building a new road at the provided coordinates, in the provided view direction
     // of the provided length.
-    startNewRoad(startCoord, viewDirection, length) {
+    startNewRoad(startCoord, viewDirection, length, type = WorkType.Road) {
         // EARLY OUT: road already in progress
-        if (this.queueInProgress === true) {
+        if (this.qInProgress === true) {
             Debug.warn("Cannot start a new road until the road in progress has completed.");
             return;
         }
-        this.queueInProgress = true;
-        this.queueCardinalDirection = RoadMaker.getCardinalInteger(viewDirection);
-        this.queueCurrentIteration = 0;
-        this.queueStartCoord = startCoord;
-        this.queueViewDirection = viewDirection;
-        this.queueRoadLength = length;
+        this.qInProgress = true;
+        this.qCardinal = RoadMaker.getCardinalInteger(viewDirection);
+        this.qIteration = 0;
+        this.qStartCoord = startCoord;
+        this.qViewDir = viewDirection;
+        this.qLength = length;
+        this.qWorkType = type;
         // copy our provided vector into an object we can walk through
-        this.queueWalkingCoord = {
+        this.qCurrentCoord = {
             x: startCoord.x,
             y: startCoord.y,
             z: startCoord.z
         };
-        Debug.debug(`Starting road(${length}) at ${Debug.printCoordinate3(startCoord)} and direction ${this.queueCardinalDirection}.`);
+        Debug.debug(`Starting road(${length}) at ${Debug.printCoordinate3(startCoord)} and direction ${this.qCardinal}.`);
     }
     // builds a road segment for this tick, updates the inProgress status
     // if the road has been completed
     tryTickIteration() {
         // EARLY OUT: nothing in progress
-        if (this.queueInProgress === false) {
+        if (this.qInProgress === false) {
             return;
         }
-        Debug.debug(`Building road: ${this.queueCurrentIteration}/${this.queueRoadLength}`);
-        let tickMaxIteration = this.queueCurrentIteration + this.SlicesPerTick;
-        let thisTickEnd = Math.min(this.queueRoadLength, tickMaxIteration);
+        Debug.debug(`Building road: ${this.qIteration}/${this.qLength}`);
+        let tickMaxIteration = this.qIteration + this.SlicesPerTick;
+        let thisTickEnd = Math.min(this.qLength, tickMaxIteration);
         // loop through our length, creating strips of road depending on our cardinal alignment
         // we are 1 indexed so the road starts just in front of the player, otherwise it
         // won't render correctly
-        for (let i = this.queueCurrentIteration + 1; i <= thisTickEnd; i++) {
-            let drawLights = i % 8 === 0;
-            let drawSupports = i % 16 === 0;
-            let changeY = 0;
-            // dynamically set our length-walking coordinate
-            let coordToChange = this.queueCardinalDirection % 2 == 0 ? "x" : "z";
-            let directionModifier = this.queueCardinalDirection > 1 ? -1 : 1;
-            this.queueWalkingCoord[coordToChange] = this.queueStartCoord[coordToChange] + (i * directionModifier);
-            // resolve our slice template
-            let sliceTemplate = drawLights ? this.RoadNormalLit : this.RoadNormal;
-            // if the second block is not air, we should stair up and raise our road elevation
-            if (this.getBlock({ x: this.queueWalkingCoord.x, y: this.queueWalkingCoord.y + 1, z: this.queueWalkingCoord.z })?.permutation !== this.Air) {
-                sliceTemplate = drawLights ? this.RoadStairLit : this.RoadStairNormal;
-                changeY = +1;
-            }
-            // if the top block is not air, we should tunnel
-            if (this.getBlock({ x: this.queueWalkingCoord.x, y: this.queueWalkingCoord.y + 4, z: this.queueWalkingCoord.z })?.permutation !== this.Air) {
-                sliceTemplate = drawLights ? this.RoadTunnelLit : this.RoadTunnel;
-            }
-            // figure out if we are floating and need supports
-            let supportY = { x: this.queueWalkingCoord.x, y: this.queueWalkingCoord.y - 1, z: this.queueWalkingCoord.z };
-            let supportHeight = 0;
-            while (drawSupports && this.getBlock(supportY)?.permutation !== this.Dirt && supportHeight < this.MaxBridgeSupportHeight) {
-                try {
-                    this.setBlock(this.Foundation, supportY);
-                    supportY.y -= 1;
-                    supportHeight++;
-                }
-                catch (e) {
+        for (let i = this.qIteration + 1; i <= thisTickEnd; i++) {
+            switch (this.qWorkType) {
+                case WorkType.Road:
+                    this.makeRoad(i);
                     break;
-                }
+                case WorkType.StairsUp:
+                    this.makeStair(i, +1);
+                    break;
+                case WorkType.StairsDown:
+                    this.makeStair(i, -1);
+                    break;
             }
+        }
+        this.qIteration = thisTickEnd;
+        if (thisTickEnd == this.qLength) {
+            this.cancelRoad();
+        }
+    }
+    makeStair(i, dir = +1) {
+        let drawLights = i % 8 === 0;
+        let drawSupports = i % 16 === 0;
+        // dynamically set our length-walking coordinate
+        let coordToChange = this.qCardinal % 2 == 0 ? "x" : "z";
+        let directionModifier = this.qCardinal > 1 ? -1 : 1;
+        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + (i * directionModifier);
+        let sliceTemplate = drawLights ? this.RoadStairLit : this.RoadStairNormal;
+        if (dir > 0) {
+            this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
+            this.qCurrentCoord.y++;
+        }
+        else {
+            this.qCurrentCoord.y--;
+            this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, true);
+        }
+    }
+    makeRoad(i) {
+        let drawLights = i % 8 === 0;
+        let drawSupports = i % 16 === 0;
+        // dynamically set our length-walking coordinate
+        let coordToChange = this.qCardinal % 2 == 0 ? "x" : "z";
+        let directionModifier = this.qCardinal > 1 ? -1 : 1;
+        this.qCurrentCoord[coordToChange] = this.qStartCoord[coordToChange] + (i * directionModifier);
+        let sliceTemplate = drawLights ? this.RoadNormalLit : this.RoadNormal;
+        // if the top block is not air, we should tunnel
+        if (this.getBlock({ x: this.qCurrentCoord.x, y: this.qCurrentCoord.y + 3, z: this.qCurrentCoord.z })?.permutation !== this.Air) {
+            sliceTemplate = drawLights ? this.RoadTunnelLit : this.RoadTunnel;
+        }
+        // generate supports
+        let supportY = { x: this.qCurrentCoord.x, y: this.qCurrentCoord.y - 1, z: this.qCurrentCoord.z };
+        let supportHeight = 0;
+        while (drawSupports && this.getBlock(supportY)?.permutation !== this.Dirt && supportHeight < this.MaxBridgeSupportHeight) {
             try {
-                // render our road
-                this.renderSlice(sliceTemplate, this.queueWalkingCoord, this.queueCardinalDirection);
-                // apply any Y change
-                this.queueWalkingCoord.y += changeY;
+                this.setBlock(this.Foundation, supportY);
+                supportY.y -= 1;
+                supportHeight++;
             }
             catch (e) {
-                Debug.error(`Failed to render road slice: ${e}.`);
+                break;
             }
         }
-        this.queueCurrentIteration = thisTickEnd;
-        if (thisTickEnd == this.queueRoadLength) {
-            this.queueInProgress = false;
-        }
+        this.renderSlice(sliceTemplate, this.qCurrentCoord, this.qCardinal, false);
     }
     // renders a single slice of road using the provided template. It uses the
     // coordinate as the bottom center of the template slice and transforms
     // based on the cardinal direction
-    renderSlice(sliceTemplate, coord, cardinalDirection) {
+    renderSlice(sliceTemplate, coord, cardinalDirection, invertStairs = false) {
         const rowOffset = 4;
         const colOffset = -2;
         Debug.trace(`Rendering slice at ${Debug.printCoordinate3(coord)}`);
@@ -259,7 +288,8 @@ export default class RoadMaker {
                 var block = this.blockInts[blockIndex];
                 // this block is a stair, set direction based on cardinal direction
                 if (blockIndex == 6) {
-                    let stairBit = this.stairCardinalConversion[this.queueCardinalDirection];
+                    let stairCard = invertStairs ? RoadMaker.invertCardinalInteger(this.qCardinal) : this.qCardinal;
+                    let stairBit = this.stairCardinalConversion[stairCard];
                     Debug.trace(`Setting stair bit for ${cardinalDirection} to ${stairBit}.`);
                     block = block.withState(this.StairDirectionStateName, stairBit);
                 }
@@ -325,6 +355,15 @@ export default class RoadMaker {
         cardinal = cardinal > 3 ? 0 : cardinal;
         Debug.trace(`Calculated cardinal direction at ${cardinal}.`);
         return cardinal;
+    }
+    // inverts a cardinally-aligned value
+    static invertCardinalInteger(cardinal) {
+        let inverse = cardinal + 2;
+        while (inverse > 3) {
+            inverse -= 4;
+        }
+        Debug.debug(`Inverting cardingal ${cardinal} to get ${inverse}`);
+        return inverse;
     }
 }
 

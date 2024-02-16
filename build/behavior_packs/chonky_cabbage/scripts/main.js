@@ -1,5 +1,5 @@
 import { world, system } from "@minecraft/server";
-import RoadMaker from "./RoadMaker";
+import RoadMaker, { WorkType } from "./RoadMaker";
 import Debug from "./Debug";
 const TicksPerSecond = 20;
 const HeadHeightInBlocks = 2;
@@ -38,46 +38,69 @@ function mainTick() {
     system.run(mainTick);
 }
 function help() {
-    Debug.info("Help: /scriptevent chonky:help");
-    Debug.info("Make Road: /scriptevent chonky:makeroad [length]");
-    Debug.info("Cancel Road: /scriptevent chonky:cancel");
-    Debug.info("Style Road: /scriptevent chonky:assign [roadblock_type]=[minecraft_block_id]");
+    Debug.info("Help: /scriptevent rd:help");
+    Debug.info("Make Road: /scriptevent rd:road 10");
+    Debug.info("Make Stairs Up: /scriptevent rd:stairs_up 10");
+    Debug.info("Make Stairs Down: /scriptevent rd:stairs_down 10");
+    Debug.info("Cancel Road: /scriptevent rd:cancel");
+    Debug.info("Style Road: /scriptevent rd:assign Path=birch_planks");
     Debug.info("Road Block Types:");
     Debug.info("- Foundation");
     Debug.info("- Wall");
     Debug.info("- Path");
     Debug.info("- Post");
     Debug.info("- Light");
+    Debug.info("- Stair");
 }
 // listen for script events
 system.afterEvents.scriptEventReceive.subscribe((event) => {
-    if (event.id === "chonky:makeroad") {
-        const length = parseInt(event.message);
-        // assume player 1 for now
-        let plyr = world.getAllPlayers()[0];
-        if (plyr != null && roadmaker.isRoadInProgress() === false) {
-            const coord = plyr.getHeadLocation();
-            const view = plyr.getViewDirection();
-            coord.y -= HeadHeightInBlocks;
-            Debug.info("Making road: " + length);
-            roadmaker.startNewRoad(coord, view, length);
-        }
-        else {
-            Debug.error("Cannot execute command because road was in progress or no player was found.");
-        }
+    // assume player 1 for now
+    let plyr = world.getAllPlayers()[0];
+    // EARLY OUT: no player
+    if (plyr == null || roadmaker == null) {
+        return;
     }
-    if (event.id === "chonky:cancelroad") {
-        roadmaker.cancelRoad();
-    }
-    if (event.id === "chonky:assign") {
-        const arg = event.message;
-        let kvp = arg.split("=");
-        if (kvp.length == 2) {
-            roadmaker.tryAssignBlockType(kvp[0], kvp[1]);
-        }
-    }
-    if (event.id == "chonky:help") {
-        help();
+    const coord = plyr.getHeadLocation();
+    const view = plyr.getViewDirection();
+    coord.y -= HeadHeightInBlocks;
+    switch (event.id) {
+        case "rd:help":
+            help();
+            break;
+        case "rd:cancel":
+            roadmaker.cancelRoad();
+            break;
+        case "rd:road":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length);
+            }
+            break;
+        case "rd:stairs_up":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length, WorkType.StairsUp);
+            }
+            break;
+        case "rd:stairs_down":
+            if (roadmaker.isRoadInProgress() === false) {
+                const length = parseInt(event.message);
+                roadmaker.startNewRoad(coord, view, length, WorkType.StairsDown);
+            }
+            break;
+        case "rd:assign":
+            const arg = event.message;
+            let kvp = arg.split("=");
+            if (kvp.length == 2) {
+                let block = kvp[0];
+                let assign = kvp[1].replace("minecraft:", "");
+                Debug.debug(`Setting ${block} to ${assign}.`);
+                roadmaker.tryAssignBlockType(block, assign);
+            }
+            else {
+                Debug.error(`Unexpected argument format: ${arg}`);
+            }
+            ;
     }
 });
 // start application
